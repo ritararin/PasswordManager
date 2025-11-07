@@ -108,6 +108,35 @@ async function deriveSubkeys(masterKey, labelHmacBytes, labelEncBytes) {
 
   return { hmacKey, encKey };
 }
+function padToFixedLength(buf) {
+  const len = buf.length;
+  if (len > MAX_PASSWORD_LENGTH) throw new Error(`plaintext too long (max ${MAX_PASSWORD_LENGTH} bytes)`);
+  const padLen = MAX_PASSWORD_LENGTH - len;
+  // PKCS#7 style: fill each pad byte with padLen (if padLen === 0 we still add a full block of pad bytes;
+  if (padLen === 0) return buf.slice(); // already fixed length
+  const out = new Uint8Array(MAX_PASSWORD_LENGTH);
+  out.set(buf, 0);
+  out.fill(padLen, len); // fill padding region with padLen
+  return out;
+}
+function unpadFromFixedLength(paddedBuf) {
+  if (!paddedBuf || paddedBuf.length !== MAX_PASSWORD_LENGTH) {
+    throw new Error("invalid padded buffer length");
+  }
+  const last = paddedBuf[paddedBuf.length - 1];
+  if (last === 0 || last > MAX_PASSWORD_LENGTH) {
+    // treat as no padding (return full buffer) or treat as invalid
+    // safest is to treat as invalid padding
+    throw new Error("invalid padding");
+  }
+  const padLen = last;
+  // verify all pad bytes equal padLen
+  for (let i = paddedBuf.length - padLen; i < paddedBuf.length; i++) {
+    if (paddedBuf[i] !== padLen) throw new Error("invalid padding");
+  }
+  return paddedBuf.slice(0, paddedBuf.length - padLen);
+}
+
 
 /********* Keychain class *********/
 
@@ -227,15 +256,107 @@ class Keychain {
 
   /***** KVS methods (left for application logic) *****/
   async get(name) {
-    throw "Not Implemented!";
+    if (typeof name !== "string" || name.length === 0) throw new Error("name must be a non empty string");
+    if(!this.secrets || !this.secrets.encKey || !this.secrets.hmacKey) throw new Error("Keychain not initialized properly");
+
+    const entry = this.data.entries[name];
+    if (!entry) return null; // not found
+
+    const iv = decodeBuffer(entry.iv);
+    const cipherBytes = decodeBuffer(entry.ciphertext);
+    const storedMacHex = entry.mac;
+
+    const nameBytes = stringToBuffer(name);
+    const macInput = new Uint8Array(nameBytes.length + iv.length + cipherBytes.length);
+    macInput.set(nameBytes, 0);
+    macInput.set(cipherBytes, nameBytes.length);
+
+    const macSigAB = await subtle.sign(
+      { name: "HMAC" },
+      this.secrets.hmacKey,
+      macInput
+    );
+    const macSig = new Uint8Array(macSigAB);
+    const macHex = bufferToHex(macSig);
+
+    const storedMacBuf = Buffer.from(storedMacHex, "hex");
+    const macBuf = Buffer.from(macHex, "hex");
+    if (storedMacBuf.length !== macBuf.length || !crypto.timingSafeEqual(storedMacBuf, macBuf)) {
+      throw new Error("Integrity check failed: MAC mismatch");
+    }
+    let plainBuf;
+    try {
+      const plainAB = await subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: iv
+        },
+        this.secrets.encKey,
+        cipherBytes
+      );
+      plainBuf = new Uint8Array(plainAB);
+    } catch (e) {
+      throw new Error("Decryption failed: " + e.message);
+    }
+
+    const unpadded = unpadFromFixedLength(plainBuf);
+
+    return bufferToString(unpadded);
   }
 
   async set(name, value) {
-    throw "Not Implemented!";
+    if (typeof name !== "string") throw new Error("name must be a non empty string");
+    if(!this.secrets || !this.secrets.encKey || !this.secrets.hmacKey) throw new Error("Keychain not initialized properly");
+
+    let plaintext;
+    if (typeof value === "string") {
+      plaintext = stringToBuffer(value);
+    }else plaintext = JSON.stringify(value);
+
+    const plainBuforig = stringToBuffer(plaintext);
+
+    const paddedPlain = padToFixedLength(plainBuforig);
+
+    const iv = getRandomBytes(12); // AES-GCM standard IV length is 12 bytes
+
+    //encrpypt
+    const cipherBuf = await subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: iv
+      },
+      this.secrets.encKey,
+      paddedPlain
+    );
+    const cipherBytes = new Uint8Array(cipherBuf);
+
+    const nameBytes = stringToBuffer(name);
+    const macInput = new Uint8Array(nameBytes.length + iv.length + cipherBytes.length);
+    macInput.set(nameBytes, 0);
+    macInput.set(cipkerBytes, nameBytes.length);
+
+    const macSigAB = await subtle.sign(
+      { name: "HMAC" },
+      this.secrets.hmacKey,
+      macInput
+    );
+    const macSigBytes = new Uint8Array(macSigAB);
+    const macHex = bufferToHex(macSig);
+
+    this.data.entries[name] = {
+      iv: encodeBuffer(iv),
+      ciphertext: encodeBuffer(cipherBytes),
+      mac: macHex,
+      createdAt: (new Date()).toISOString()
+    };
+    return true;
   }
 
   async remove(name) {
-    throw "Not Implemented!";
+    if (typeof name !== "string") throw new Error("name must be a string");
+    if (!this.data.entries[name]) return false;
+    delete this.data.entries[name];
+    return true;
   }
 }
 
