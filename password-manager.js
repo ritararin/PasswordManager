@@ -191,39 +191,41 @@ class Keychain {
 
     return kc;
   }
+  
 
-  /**
-   * Load keychain from serialized representation.
-   * repr is expected to be JSON string (the first element of dump()) or
-   * the same structure — we accept either the JSON object or JSON string.
-   *
-   * If trustedDataCheck (hex string) is present, verify SHA-256 checksum.
+    /**
+   * Load keychain from serialized representation (JSON string or object).
+   * If trustedDataCheck (hex string) is provided, verify SHA-256 checksum.
+   * This prevents rollback or tampering attacks on stored data.
    */
   static async load(password, repr, trustedDataCheck) {
     if (typeof password !== "string") throw new Error("password must be a string");
 
-    // Accept either JSON string or object
+    // Parse JSON if necessary
     let obj;
-    if (typeof repr === "string") obj = JSON.parse(repr);
-    else obj = repr;
+    let jsonStr;
+    if (typeof repr === "string") {
+      jsonStr = repr;
+      obj = JSON.parse(repr);
+    } else {
+      obj = repr;
+      jsonStr = JSON.stringify(obj);
+    }
 
-    // if checksum provided, verify
-    if (trustedDataCheck) {
-      const jsonStr = (typeof repr === "string") ? repr : JSON.stringify(repr);
+    // --- Integrity / rollback protection ---
+    if (trustedDataCheck !== undefined) {
       const actualHex = await sha256Hex(stringToBuffer(jsonStr));
       if (actualHex !== trustedDataCheck) {
-        throw new Error("Integrity check failed: checksum mismatch");
+        throw new Error("Integrity check failed: checksum mismatch (possible rollback attack)");
       }
     }
 
-    // create Keychain and load public data
+    // --- Reconstruct Keychain object ---
     const kc = new Keychain();
-    kc.data = {
-      salt: obj.salt,
-      entries: obj.entries || {}
-    };
+    kc.data.salt = obj.salt;
+    kc.data.entries = obj.entries || {};
 
-    // Recreate secrets using provided password and stored salt
+    // Re-derive cryptographic keys from password and stored salt
     const saltBytes = decodeBuffer(kc.data.salt);
     const masterKey = await deriveMasterKey(password, saltBytes);
     const { hmacKey, encKey } = await deriveSubkeys(
@@ -240,18 +242,19 @@ class Keychain {
   }
 
   /**
-   * Returns [jsonString, checksumHex]
-   * (jsonString contains only public serializable data; secrets are not included)
+   * Serialize current keychain contents and compute SHA-256 checksum.
+   * Returns [jsonString, checksumHex].
+   * The checksum can be stored in trusted storage for future verification.
    */
   async dump() {
-    const publicObj = {
+    const publicData = {
       salt: this.data.salt,
       entries: this.data.entries
     };
 
-    const jsonStr = JSON.stringify(publicObj);
-    const checksumHex = await sha256Hex(stringToBuffer(jsonStr));
-    return [jsonStr, checksumHex];
+    const jsonString = JSON.stringify(publicData);
+    const checksumHex = await sha256Hex(stringToBuffer(jsonString));
+    return [jsonString, checksumHex];
   }
 
   /***** KVS methods (left for application logic) *****/
@@ -277,7 +280,7 @@ class Keychain {
       macInput
     );
     const macSig = new Uint8Array(macSigAB);
-    const macHex = bufferToHex(macSig);
+    const macHex = bufferToHex(macSigBytes);
 
     const storedMacBuf = Buffer.from(storedMacHex, "hex");
     const macBuf = Buffer.from(macHex, "hex");
@@ -333,7 +336,7 @@ class Keychain {
     const nameBytes = stringToBuffer(name);
     const macInput = new Uint8Array(nameBytes.length + iv.length + cipherBytes.length);
     macInput.set(nameBytes, 0);
-    macInput.set(cipkerBytes, nameBytes.length);
+    macInput.set(cipherBytes, nameBytes.length);
 
     const macSigAB = await subtle.sign(
       { name: "HMAC" },
@@ -341,7 +344,7 @@ class Keychain {
       macInput
     );
     const macSigBytes = new Uint8Array(macSigAB);
-    const macHex = bufferToHex(macSig);
+    const macHex = bufferToHex(macSigBytes);
 
     this.data.entries[name] = {
       iv: encodeBuffer(iv),
