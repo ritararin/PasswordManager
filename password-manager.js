@@ -149,6 +149,15 @@ class Keychain {
     this.data = {
       // salt is stored as base64 string
       salt: null,
+      // entries will be stored as an object mapping domain -> { /* metadata / ciphertext */ }
+      kvs: {}
+    };
+
+    // secrets - in-memory only, not serialized
+    // public, serializable data
+    this.data = {
+      // salt is stored as base64 string
+      salt: null,
       // kvs will be stored as an object mapping hashedDomain -> { iv, ciphertext, mac }
       kvs: {}
     };
@@ -162,7 +171,7 @@ class Keychain {
   }
 
   /**
-   * 🛡️ MEMBER 4: Hash domain name using HMAC
+   *  Hash domain name using HMAC
    * This prevents domain names from appearing in plaintext
    */
   async hashDomainName(domain) {
@@ -241,7 +250,7 @@ class Keychain {
       throw new Error("Failed to derive master key");
     }
 
-    // 🛡️ MEMBER 4: ROLLBACK DEFENSE
+    // ROLLBACK DEFENSE
     // If caller provided trustedDataCheck, verify it using password-dependent HMAC
     if (trustedDataCheck) {
       // Compute HMAC(masterKey, jsonStr)
@@ -290,7 +299,7 @@ class Keychain {
 
     const jsonStr = JSON.stringify(publicObj);
 
-    // 🛡️ MEMBER 4: ROLLBACK DEFENSE
+    //  ROLLBACK DEFENSE
     // Compute password-dependent checksum: HMAC(masterKey, jsonStr)
     if (!this.secrets || !this.secrets.masterKey) {
       // If no masterKey in memory, we cannot compute password-dependent checksum.
@@ -319,7 +328,7 @@ class Keychain {
     if (typeof name !== "string" || name.length === 0) throw new Error("name must be a non empty string");
     if(!this.secrets || !this.secrets.encKey || !this.secrets.hmacKey) throw new Error("Keychain not initialized properly");
 
-    // 🛡️ MEMBER 4: Hash domain to look up in kvs
+    // Hash domain to look up in kvs
     const hashedDomain = await this.hashDomainName(name);
 
     const entry = this.data.kvs[hashedDomain];
@@ -412,13 +421,13 @@ class Keychain {
     
     const plaintext = JSON.stringify(payload);
     const plainBufOrig = stringToBuffer(plaintext);
-
+    
     // Pad to fixed length to hide password length
     const paddedPlain = padToFixedLength(plainBufOrig);
-
+    
     // Generate random IV
     const iv = getRandomBytes(12);
-
+    // Remove any previous declarations of paddedPlain (none needed here)
     // Encrypt with AES-GCM
     const cipherBuf = await subtle.encrypt(
       {
@@ -430,7 +439,7 @@ class Keychain {
     );
     const cipherBytes = new Uint8Array(cipherBuf);
 
-    // 🛡️ MEMBER 4: Hash domain name for storage key
+    // Hash domain name for storage key
     const hashedDomain = await this.hashDomainName(name);
 
     // Compute MAC over (iv || ciphertext) only
@@ -464,7 +473,7 @@ class Keychain {
   async remove(name) {
     if (typeof name !== "string") throw new Error("name must be a string");
     
-    // 🛡️ MEMBER 4: Hash domain to find in kvs
+    // Hash domain to find in kvs
     const hashedDomain = await this.hashDomainName(name);
     
     if (!this.data.kvs[hashedDomain]) return false;
