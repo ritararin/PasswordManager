@@ -71,7 +71,7 @@ export function MasterPasswordConfirmation({ open, onClose, onConfirm }: MasterP
                   setError('');
                 }}
                 placeholder="Enter your password"
-                className="bg-slate-950 border-slate-600 focus:border-yellow-500 pr-10"
+                className="bg-slate-950 border-slate-600 focus:border-yellow-500 pr-10 text-white placeholder:text-neutral-500"
                 autoFocus
               />
               <button

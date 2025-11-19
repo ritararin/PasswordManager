@@ -1,23 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { PasswordList } from './PasswordList';
 import { PasswordDetailView } from './PasswordDetailView';
 import { MasterPasswordConfirmation } from './MasterPasswordConfirmation';
 import { AddPasswordDialog } from './AddPasswordDialog';
+import { passwordService, Password } from '../services/apiService';
+import { toast } from 'sonner';
 
 export interface PasswordEntry {
-  id: string;
-  website: string;
-  url: string;
-  username: string;
-  password: string;
-  notes: string;
+  id: number;
+  service_name: string;
+  website_url?: string;
+  username?: string;
+  email_address?: string;
+  password?: string;
+  notes?: string;
   category: string;
-  favicon: string;
-  createdAt: string;
-  modifiedAt: string;
-  isWeak?: boolean;
-  isReused?: boolean;
+  is_weak: boolean;
+  is_reused: boolean;
+  created_at: string;
+  updated_at: string;
+  last_used?: string;
+  // For display compatibility
+  website?: string;
+  url?: string;
+  favicon?: string;
+  createdAt?: string;
+  modifiedAt?: string;
 }
 
 interface DashboardProps {
@@ -30,85 +39,69 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [showMasterPasswordDialog, setShowMasterPasswordDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [currentView, setCurrentView] = useState<'passwords' | 'notes' | 'cards' | 'settings'>('passwords');
+  const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock data
-  const [passwords, setPasswords] = useState<PasswordEntry[]>([
-    {
-      id: '1',
-      website: 'GitHub',
-      url: 'https://github.com',
-      username: 'john.doe@email.com',
-      password: 'GH$ecur3P@ss2024!',
-      notes: 'Work account for development projects',
-      category: 'Work',
-      favicon: 'https://github.githubassets.com/favicons/favicon.svg',
-      createdAt: '2024-01-15',
-      modifiedAt: '2024-10-20',
-    },
-    {
-      id: '2',
-      website: 'Google',
-      url: 'https://google.com',
-      username: 'personal@gmail.com',
-      password: 'GooglePass123',
-      notes: 'Personal Google account',
-      category: 'Personal',
-      favicon: 'https://www.google.com/favicon.ico',
-      createdAt: '2023-08-10',
-      modifiedAt: '2024-11-01',
-      isWeak: true,
-    },
-    {
-      id: '3',
-      website: 'Netflix',
-      url: 'https://netflix.com',
-      username: 'family@email.com',
-      password: 'Netflix2023',
-      notes: 'Family shared account',
-      category: 'Entertainment',
-      favicon: 'https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2023.ico',
-      createdAt: '2023-06-22',
-      modifiedAt: '2024-06-22',
-      isReused: true,
-    },
-    {
-      id: '4',
-      website: 'Amazon',
-      url: 'https://amazon.com',
-      username: 'shopper@email.com',
-      password: 'Amz0n$h0pp1ng!2024',
-      notes: 'Primary shopping account',
-      category: 'Shopping',
-      favicon: 'https://www.amazon.com/favicon.ico',
-      createdAt: '2024-02-14',
-      modifiedAt: '2024-11-10',
-    },
-    {
-      id: '5',
-      website: 'LinkedIn',
-      url: 'https://linkedin.com',
-      username: 'john.doe.professional',
-      password: 'L1nk3d!nCareer#99',
-      notes: 'Professional networking',
-      category: 'Work',
-      favicon: 'https://static.licdn.com/sc/h/al2o9zrvru7aqj8e1x2rzsrca',
-      createdAt: '2023-11-30',
-      modifiedAt: '2024-09-15',
-    },
-  ]);
-
-  const handleRequestPasswordView = () => {
-    setShowMasterPasswordDialog(true);
+  // Fetch passwords from backend
+  const loadPasswords = async () => {
+    setLoading(true);
+    try {
+      const data = await passwordService.getAll();
+      
+      // Transform backend data to match frontend format
+      const transformedPasswords = data.map((pwd: Password) => ({
+        ...pwd,
+        id: pwd.id,
+        website: pwd.service_name,
+        url: pwd.website_url || '',
+        username: pwd.username || pwd.email_address || '',
+        favicon: pwd.website_url 
+          ? `https://www.google.com/s2/favicons?domain=${pwd.website_url}&sz=64`
+          : '',
+        createdAt: pwd.created_at,
+        modifiedAt: pwd.updated_at,
+        isWeak: pwd.is_weak,
+        isReused: pwd.is_reused,
+      }));
+      
+      setPasswords(transformedPasswords);
+    } catch (error: any) {
+      toast.error('Failed to load passwords');
+      console.error('Error loading passwords:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleMasterPasswordConfirmed = () => {
-    setShowPasswordValue(true);
-    setShowMasterPasswordDialog(false);
+  useEffect(() => {
+    loadPasswords();
+  }, []);
+
+  const handleRequestPasswordView = async () => {
+    if (!selectedPassword) return;
     
-    // Auto-hide after 5 minutes
-    setTimeout(() => {
-      setShowPasswordValue(false);
-    }, 5 * 60 * 1000);
+    try {
+      // Fetch the full password details with decrypted password
+      const fullPassword = await passwordService.getById(selectedPassword.id);
+      
+      // Update the selected password with the decrypted password
+      setSelectedPassword({
+        ...selectedPassword,
+        password: fullPassword.password
+      });
+      
+      setShowPasswordValue(true);
+      setShowMasterPasswordDialog(false);
+      
+      // Auto-hide after 5 minutes
+      setTimeout(() => {
+        setShowPasswordValue(false);
+      }, 5 * 60 * 1000);
+    } catch (error) {
+      console.error('Error fetching password:', error);
+      toast.error('Failed to retrieve password');
+      setShowMasterPasswordDialog(false);
+    }
   };
 
   const handleCloseDetail = () => {
@@ -116,16 +109,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
     setShowPasswordValue(false);
   };
 
-  const handleAddPassword = (newPassword: Omit<PasswordEntry, 'id' | 'createdAt' | 'modifiedAt'>) => {
-    const now = new Date().toISOString().split('T')[0];
-    const password: PasswordEntry = {
-      ...newPassword,
-      id: Date.now().toString(),
-      createdAt: now,
-      modifiedAt: now,
-    };
-    setPasswords([password, ...passwords]);
-    setShowAddDialog(false);
+  const handlePasswordAdded = () => {
+    loadPasswords(); // Reload passwords after adding new one
   };
 
   return (
@@ -139,20 +124,28 @@ export function Dashboard({ onLogout }: DashboardProps) {
       <div className="flex-1 flex">
         {currentView === 'passwords' && (
           <>
-            <PasswordList 
-              passwords={passwords}
-              selectedId={selectedPassword?.id}
-              onSelectPassword={setSelectedPassword}
-              onAddNew={() => setShowAddDialog(true)}
-            />
-            
-            {selectedPassword && (
-              <PasswordDetailView
-                password={selectedPassword}
-                showPassword={showPasswordValue}
-                onRequestPasswordView={handleRequestPasswordView}
-                onClose={handleCloseDetail}
-              />
+            {loading ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-neutral-500">Loading passwords...</p>
+              </div>
+            ) : (
+              <>
+                <PasswordList 
+                  passwords={passwords}
+                  selectedId={selectedPassword?.id}
+                  onSelectPassword={setSelectedPassword}
+                  onAddNew={() => setShowAddDialog(true)}
+                />
+                
+                {selectedPassword && (
+                  <PasswordDetailView
+                    password={selectedPassword}
+                    showPassword={showPasswordValue}
+                    onRequestPasswordView={handleRequestPasswordView}
+                    onClose={handleCloseDetail}
+                  />
+                )}
+              </>
             )}
           </>
         )}
@@ -179,13 +172,13 @@ export function Dashboard({ onLogout }: DashboardProps) {
       <MasterPasswordConfirmation
         open={showMasterPasswordDialog}
         onClose={() => setShowMasterPasswordDialog(false)}
-        onConfirm={handleMasterPasswordConfirmed}
+        onConfirm={handleRequestPasswordView}
       />
 
       <AddPasswordDialog
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
-        onAdd={handleAddPassword}
+        onSuccess={handlePasswordAdded}
       />
     </div>
   );

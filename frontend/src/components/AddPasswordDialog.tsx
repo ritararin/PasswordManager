@@ -11,42 +11,56 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
-import { PasswordEntry } from './Dashboard';
+import { passwordService } from '../services/apiService';
+import { toast } from 'sonner';
 
 interface AddPasswordDialogProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (password: Omit<PasswordEntry, 'id' | 'createdAt' | 'modifiedAt'>) => void;
+  onSuccess: () => void;
 }
 
-export function AddPasswordDialog({ open, onClose, onAdd }: AddPasswordDialogProps) {
-  const [website, setWebsite] = useState('');
-  const [url, setUrl] = useState('');
+export function AddPasswordDialog({ open, onClose, onSuccess }: AddPasswordDialogProps) {
+  const [serviceName, setServiceName] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState('Personal');
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    onAdd({
-      website,
-      url,
-      username,
-      password,
-      notes,
-      category,
-      favicon: `https://www.google.com/s2/favicons?domain=${url}&sz=64`,
-    });
+    setLoading(true);
 
-    // Reset form
-    setWebsite('');
-    setUrl('');
-    setUsername('');
-    setPassword('');
-    setNotes('');
-    setCategory('Personal');
+    try {
+      await passwordService.create({
+        service_name: serviceName,
+        password: password,
+        website_url: websiteUrl,
+        username: username,
+        notes: notes,
+        category: category,
+      });
+
+      toast.success('Password added successfully!');
+      
+      // Reset form
+      setServiceName('');
+      setWebsiteUrl('');
+      setUsername('');
+      setPassword('');
+      setNotes('');
+      setCategory('Personal');
+      
+      onSuccess();
+      onClose();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to add password');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -61,14 +75,15 @@ export function AddPasswordDialog({ open, onClose, onAdd }: AddPasswordDialogPro
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <div>
-            <Label htmlFor="website">Website Name</Label>
+            <Label htmlFor="service-name">Website Name</Label>
             <Input
-              id="website"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
+              id="service-name"
+              value={serviceName}
+              onChange={(e) => setServiceName(e.target.value)}
               placeholder="e.g., GitHub"
-              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500"
+              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500 text-white placeholder:text-neutral-500"
               required
+              disabled={loading}
             />
           </div>
 
@@ -77,11 +92,11 @@ export function AddPasswordDialog({ open, onClose, onAdd }: AddPasswordDialogPro
             <Input
               id="url"
               type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
               placeholder="https://github.com"
-              className="mt-1.5 bg-neutral-950 border-neutral-700 focus:border-blue-500"
-              required
+              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500 text-white placeholder:text-neutral-500"
+              disabled={loading}
             />
           </div>
 
@@ -92,22 +107,33 @@ export function AddPasswordDialog({ open, onClose, onAdd }: AddPasswordDialogPro
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="you@example.com"
-              className="mt-1.5 bg-neutral-950 border-neutral-700 focus:border-blue-500"
-              required
+              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500 text-white placeholder:text-neutral-500"
+              disabled={loading}
             />
           </div>
 
           <div>
             <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500"
-              required
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500 text-white placeholder:text-neutral-500 pr-10"
+                required
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200"
+                disabled={loading}
+              >
+                {showPassword ? '👁️' : '👁️‍🗨️'}
+              </button>
+            </div>
           </div>
 
           <div>
@@ -117,7 +143,8 @@ export function AddPasswordDialog({ open, onClose, onAdd }: AddPasswordDialogPro
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               placeholder="e.g., Work, Personal, Shopping"
-              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500"
+              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500 text-white placeholder:text-neutral-500"
+              disabled={loading}
             />
           </div>
 
@@ -128,8 +155,9 @@ export function AddPasswordDialog({ open, onClose, onAdd }: AddPasswordDialogPro
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add any additional notes..."
-              className="mt-1.5 bg-neutral-950 border-neutral-700 focus:border-blue-500 resize-none"
+              className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500 resize-none text-white placeholder:text-neutral-500"
               rows={3}
+              disabled={loading}
             />
           </div>
 
@@ -139,15 +167,17 @@ export function AddPasswordDialog({ open, onClose, onAdd }: AddPasswordDialogPro
               onClick={onClose}
               variant="outline"
               className="flex-1 border-slate-600 hover:bg-slate-800"
+              disabled={loading}
             >
               Cancel
             </Button>
             <Button
               type="submit"
               className="flex-1 bg-blue-600 hover:bg-blue-700"
+              disabled={loading}
             >
               <Plus className="size-4 mr-2" />
-              Add Password
+              {loading ? 'Adding...' : 'Add Password'}
             </Button>
           </div>
         </form>

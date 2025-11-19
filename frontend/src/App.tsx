@@ -1,3 +1,4 @@
+import { Toaster } from 'sonner';
 import { useState } from 'react';
 import { SignUp } from './components/SignUp';
 import { LogIn } from './components/LogIn';
@@ -24,24 +25,27 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-neutral-50">
-      {currentView === 'signup' && (
-        <SignUp 
-          onSuccess={handleSignUpSuccess}
-          onSwitchToLogin={() => setCurrentView('login')}
-        />
-      )}
-      
-      {currentView === 'login' && (
-        <LogIn 
-          onSuccess={handleLogInSuccess}
-          onSwitchToSignUp={() => setCurrentView('signup')}
-        />
-      )}
-      
-      {currentView === 'dashboard' && isAuthenticated && (
-        <Dashboard onLogout={handleLogout} />
-      )}
-    </div>
+    <>
+      <div className="min-h-screen bg-slate-950 text-neutral-50">
+        {currentView === 'signup' && (
+          <SignUp 
+            onSuccess={handleSignUpSuccess}
+            onSwitchToLogin={() => setCurrentView('login')}
+          />
+        )}
+        
+        {currentView === 'login' && (
+          <LogIn 
+            onSuccess={handleLogInSuccess}
+            onSwitchToSignUp={() => setCurrentView('signup')}
+          />
+        )}
+        
+        {currentView === 'dashboard' && isAuthenticated && (
+          <Dashboard onLogout={handleLogout} />
+        )}
+      </div>
+      <Toaster position="top-right" richColors />
+    </>
   );
 }

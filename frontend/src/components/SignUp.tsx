@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Alert, AlertDescription } from './ui/alert';
+import { authService } from '../services/apiService';
 
 interface SignUpProps {
   onSuccess: () => void;
@@ -16,6 +17,8 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const getPasswordStrength = (password: string): { strength: number; label: string; color: string } => {
     let strength = 0;
@@ -33,11 +36,28 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
 
   const passwordStrength = getPasswordStrength(masterPassword);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate sign up
-    if (masterPassword === confirmPassword && email && masterPassword) {
+    setError('');
+
+    if (masterPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (masterPassword.length < 8) {
+      setError('Password must be at least 8 characters long');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await authService.register(email, masterPassword);
       onSuccess();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -64,6 +84,12 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
             </AlertDescription>
           </Alert>
 
+          {error && (
+            <div className="mb-4 p-3 bg-red-950/20 border border-red-900/50 rounded-lg">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <Label htmlFor="email">Email Address</Label>
@@ -75,6 +101,7 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
                 placeholder="you@example.com"
                 className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -89,11 +116,13 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
                   placeholder="Enter a strong password"
                   className="bg-slate-950 border-slate-600 focus:border-blue-500 pr-10"
                   required
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200"
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -127,11 +156,13 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
                   placeholder="Re-enter your password"
                   className="bg-slate-950 border-slate-600 focus:border-blue-500 pr-10"
                   required
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200"
+                  disabled={loading}
                 >
                   {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -144,9 +175,9 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
             <Button 
               type="submit" 
               className="w-full bg-blue-600 hover:bg-blue-700 mt-6"
-              disabled={!email || !masterPassword || masterPassword !== confirmPassword}
+              disabled={!email || !masterPassword || masterPassword !== confirmPassword || loading}
             >
-              Create Account
+              {loading ? 'Creating Account...' : 'Create Account'}
             </Button>
           </form>
 
@@ -156,6 +187,7 @@ export function SignUp({ onSuccess, onSwitchToLogin }: SignUpProps) {
               <button
                 onClick={onSwitchToLogin}
                 className="text-blue-400 hover:text-blue-300 underline"
+                disabled={loading}
               >
                 Log In
               </button>

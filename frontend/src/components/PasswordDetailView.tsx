@@ -86,7 +86,7 @@ export function PasswordDetailView({
               <div className="flex items-center gap-2">
                 <div className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 font-mono">
                   {showPassword ? (
-                    <span className="text-neutral-100">{password.password}</span>
+                    <span className="text-white font-semibold tracking-wide">{password.password}</span>
                   ) : (
                     <span className="text-neutral-100">••••••••••••</span>
                   )}

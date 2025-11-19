@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import { authService } from '../services/apiService';
 
 interface LogInProps {
   onSuccess: () => void;
@@ -21,14 +22,25 @@ export function LogIn({ onSuccess, onSwitchToSignUp }: LogInProps) {
   const [masterPassword, setMasterPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotDialog, setShowForgotDialog] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Simulate login
-    if (email && masterPassword) {
-      onSuccess();
-    }
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+
+  try {
+    const response = await authService.login(email, masterPassword);
+    console.log('Login response:', response); // Debug log
+    console.log('Token stored:', localStorage.getItem('access_token')); // Debug log
+    onSuccess();
+  } catch (err: any) {
+    setError(err.response?.data?.error || 'Invalid email or password');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -46,6 +58,15 @@ export function LogIn({ onSuccess, onSwitchToSignUp }: LogInProps) {
           <h2 className="text-2xl mb-2">Welcome Back</h2>
           <p className="text-neutral-400 mb-6">Enter your password to continue</p>
 
+          {error && (
+            <div className="mb-4 p-3 bg-red-950/20 border border-red-900/50 rounded-lg">
+              <p className="text-red-400 text-sm flex items-center gap-2">
+                <AlertCircle className="size-4" />
+                {error}
+              </p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <Label htmlFor="email">Email Address</Label>
@@ -57,6 +78,7 @@ export function LogIn({ onSuccess, onSwitchToSignUp }: LogInProps) {
                 placeholder="you@example.com"
                 className="mt-1.5 bg-slate-950 border-slate-600 focus:border-blue-500"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -67,6 +89,7 @@ export function LogIn({ onSuccess, onSwitchToSignUp }: LogInProps) {
                   type="button"
                   onClick={() => setShowForgotDialog(true)}
                   className="text-xs text-blue-400 hover:text-blue-300"
+                  disabled={loading}
                 >
                   Forgot Password?
                 </button>
@@ -80,11 +103,13 @@ export function LogIn({ onSuccess, onSwitchToSignUp }: LogInProps) {
                   placeholder="Enter your password"
                   className="bg-slate-950 border-slate-600 focus:border-blue-500 pr-10"
                   required
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200"
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -94,9 +119,9 @@ export function LogIn({ onSuccess, onSwitchToSignUp }: LogInProps) {
             <Button 
               type="submit" 
               className="w-full bg-blue-600 hover:bg-blue-700 mt-6"
-              disabled={!email || !masterPassword}
+              disabled={!email || !masterPassword || loading}
             >
-              Log In
+              {loading ? 'Logging in...' : 'Log In'}
             </Button>
           </form>
 
@@ -106,6 +131,7 @@ export function LogIn({ onSuccess, onSwitchToSignUp }: LogInProps) {
               <button
                 onClick={onSwitchToSignUp}
                 className="text-blue-400 hover:text-blue-300 underline"
+                disabled={loading}
               >
                 Sign Up
               </button>
